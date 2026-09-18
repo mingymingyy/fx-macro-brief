@@ -1,0 +1,19 @@
+[theme]
+base = "dark"
+primaryColor = "#4C8DFF"
+backgroundColor = "#0E1117"
+secondaryBackgroundColor = "#161A23"
+textColor = "#E6E8EC"
+font = "sans serif"
+
+[server]
+# Uploaded TradingView exports are small; no need for the 200 MB default.
+maxUploadSize = 20
+enableStaticServing = false
+
+[browser]
+gatherUsageStats = false
+
+[client]
+# Show the real exception in the terminal, a tidy message in the browser.
+showErrorDetails = "full"
