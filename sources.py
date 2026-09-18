@@ -20,7 +20,8 @@ import streamlit as st
 import yfinance as yf
 
 from config import (
-    CENTRAL_BANK_FEEDS, FRED_CSV, HEADERS, LABEL, MOF_CUR, MOF_HIST, SGT, TICKERS,
+    CENTRAL_BANK_FEEDS, FRED_CSV, HEADERS, LABEL, LBMA_JSON, MOF_CUR, MOF_HIST,
+    SGT, SPOT_METALS, SPOT_QUOTE, TICKERS,
 )
 
 _SESSION = requests.Session()
@@ -56,12 +57,80 @@ def _closes(df: pd.DataFrame) -> pd.DataFrame:
 
 @st.cache_data(ttl=30 * 60, show_spinner="Pulling daily price history")
 def load_daily() -> pd.DataFrame:
-    """Full daily history for every instrument. Slow, so cached for 30 minutes."""
+    """Full daily history for every instrument. Slow, so cached for 30 minutes.
+
+    Yahoo covers the FX, futures and index rows; the precious metals are joined
+    on from LBMA so they are spot rather than a deferred futures contract.
+    """
     raw = yf.download(list(TICKERS), period="max", interval="1d",
                       progress=False, auto_adjust=False, threads=True)
     df = _closes(raw)
     df.index = pd.to_datetime(df.index).tz_localize(None)
-    return df.ffill(limit=3)
+    # Bridge the odd missing day in a Yahoo series, but do it before the metals
+    # are joined: an LBMA benchmark has no value on a day it did not fix, and
+    # carrying the last one forward would invent a flat day that drags the
+    # volatility and z-score columns toward zero.
+    df = df.ffill(limit=3)
+    metals = safe(load_spot_metals, label="LBMA metal benchmarks", quiet=True)
+    if metals is not None and not metals.empty:
+        df = df.join(metals, how="outer")
+    return df
+
+
+# ================================================================ spot metals
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def load_lbma(feed: str) -> pd.Series:
+    """One LBMA benchmark as a daily USD series.
+
+    Each row is {"d": date, "v": [USD, GBP, EUR]}; we want the dollar leg. Gold,
+    platinum and palladium are fixed twice a day and we take the afternoon
+    auction, which is the one the market quotes.
+    """
+    rows = get(LBMA_JSON.format(feed)).json()
+    dates, values = [], []
+    for r in rows:
+        v = (r.get("v") or [None])[0]
+        if v is None:
+            continue
+        dates.append(r["d"])
+        values.append(float(v))
+    if not dates:
+        raise ValueError(f"no usable rows in LBMA feed {feed!r}")
+    s = pd.Series(values, index=pd.to_datetime(dates), name=feed).sort_index()
+    return s[~s.index.duplicated(keep="last")]
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner="Pulling LBMA metal benchmarks")
+def load_spot_metals() -> pd.DataFrame:
+    """Daily spot history for every metal in SPOT_METALS, one column per label."""
+    cols = {}
+    for label, (feed, _) in SPOT_METALS.items():
+        try:
+            cols[label] = load_lbma(feed)
+        except Exception:  # noqa: BLE001 - one dead feed must not lose the rest
+            continue
+    if not cols:
+        raise RuntimeError("no LBMA benchmark could be loaded")
+    return pd.concat(cols, axis=1, sort=True).sort_index()
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def load_spot_quotes() -> pd.DataFrame:
+    """Live spot metal prices, shaped like the intraday frame so the board can
+    treat them the same way: a single row, indexed by the quote timestamp."""
+    prices, stamps = {}, []
+    for label, (_, symbol) in SPOT_METALS.items():
+        try:
+            j = get(SPOT_QUOTE.format(symbol), timeout=10).json()
+            prices[label] = float(j["price"])
+            stamps.append(pd.Timestamp(j["updatedAt"]))
+        except Exception:  # noqa: BLE001
+            continue
+    if not prices:
+        return pd.DataFrame()
+    ts = max(stamps) if stamps else pd.Timestamp.utcnow()
+    ts = (ts.tz_localize("UTC") if ts.tzinfo is None else ts).tz_convert(SGT)
+    return pd.DataFrame([prices], index=pd.DatetimeIndex([ts]))
 
 
 @st.cache_data(ttl=45, show_spinner=False)

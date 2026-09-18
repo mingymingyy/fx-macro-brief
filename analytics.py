@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from config import ET, INSTRUMENTS, IN_PERCENT
+from config import BOARD_ROWS, ET, IN_PERCENT
 
 
 # ================================================================ price board
@@ -21,7 +21,7 @@ def _pct_or_bp(name: str, last: float, ref: float) -> float:
 
 def build_board(daily: pd.DataFrame, intra: pd.DataFrame) -> pd.DataFrame:
     rows = []
-    for name, (_, group) in INSTRUMENTS.items():
+    for name, group in BOARD_ROWS.items():
         if name not in daily or daily[name].dropna().shape[0] < 260:
             continue
         s = daily[name].dropna()

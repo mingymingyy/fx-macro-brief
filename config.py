@@ -34,7 +34,8 @@ INSTRUMENTS = {
     "DXY": ("DX-Y.NYB", "G10 FX"),
     # Asia & EM FX
     "USD/SGD": ("SGD=X", "Asia & EM FX"),
-    "USD/CNH": ("CNH=X", "Asia & EM FX"),
+    # CNH=X quotes but carries no history on Yahoo, so the onshore fix it is.
+    "USD/CNY": ("CNY=X", "Asia & EM FX"),
     "USD/KRW": ("KRW=X", "Asia & EM FX"),
     "USD/TWD": ("TWD=X", "Asia & EM FX"),
     "USD/INR": ("INR=X", "Asia & EM FX"),
@@ -43,10 +44,7 @@ INSTRUMENTS = {
     "USD/MXN": ("MXN=X", "Asia & EM FX"),
     "USD/BRL": ("BRL=X", "Asia & EM FX"),
     "USD/ZAR": ("ZAR=X", "Asia & EM FX"),
-    # Commodities
-    "Gold": ("GC=F", "Commodities"),
-    "Silver": ("SI=F", "Commodities"),
-    "Platinum": ("PL=F", "Commodities"),
+    # Commodities. Precious metals are NOT here: see SPOT_METALS below.
     "Copper": ("HG=F", "Commodities"),
     "WTI crude": ("CL=F", "Commodities"),
     "Brent crude": ("BZ=F", "Commodities"),
@@ -65,8 +63,40 @@ INSTRUMENTS = {
 }
 GROUPS = ["G10 FX", "Asia & EM FX", "Commodities", "Risk & rates"]
 
+# Precious metals are quoted spot, not from futures.
+#
+# Yahoo has no spot metal symbol at all -- XAUUSD=X and friends 404 -- and its
+# "GC=F" is whichever COMEX contract is most active, which for gold is usually
+# two or three months out. In September 2026 that was the December contract at
+# 4432 while XAU/USD spot was 4393: a $38, 0.9% gap that made the board look
+# simply wrong to anyone with a broker screen open.
+#
+# So these come from the benchmark instead: LBMA's published auction prices for
+# the daily history (the actual fix the market settles against, back to 1968)
+# and a live spot quote for the current level.
+# label: (LBMA json feed, live spot symbol)
+SPOT_METALS = {
+    "Gold": ("gold_pm", "XAU"),
+    "Silver": ("silver", "XAG"),
+    "Platinum": ("platinum_pm", "XPT"),
+    "Palladium": ("palladium_pm", "XPD"),
+}
+
 # Instruments quoted as a yield/index in percent, so "%" moves are misleading.
 IN_PERCENT = {"VIX", "UST 3M yield", "UST 10Y yield", "UST 30Y yield"}
+
+# Everything on the board, in display order, with its group. Spot metals slot in
+# ahead of the first futures-quoted commodity rather than being tacked on the end.
+def _board_rows() -> dict[str, str]:
+    rows: dict[str, str] = {}
+    for name, (_, group) in INSTRUMENTS.items():
+        if group == "Commodities" and not any(m in rows for m in SPOT_METALS):
+            rows.update({m: "Commodities" for m in SPOT_METALS})
+        rows[name] = group
+    return rows
+
+
+BOARD_ROWS = _board_rows()
 
 TICKERS = tuple(t for t, _ in INSTRUMENTS.values())
 LABEL = {t: name for name, (t, _) in INSTRUMENTS.items()}
@@ -107,6 +137,8 @@ NASDAQ_CALENDAR = "https://api.nasdaq.com/api/calendar/economicevents?date={date
 FRED_CSV = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={}"
 MOF_HIST = "https://www.mof.go.jp/english/policy/jgbs/reference/interest_rate/historical/jgbcme_all.csv"
 MOF_CUR = "https://www.mof.go.jp/english/policy/jgbs/reference/interest_rate/jgbcme.csv"
+LBMA_JSON = "https://prices.lbma.org.uk/json/{}.json"
+SPOT_QUOTE = "https://api.gold-api.com/price/{}"
 
 # ---------------------------------------------------------------- rates board
 # label: FRED series id. All are daily and in percent.

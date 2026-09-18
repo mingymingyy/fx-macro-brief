@@ -35,8 +35,8 @@ from config import (
 )
 from sources import (
     cb_feeds, load_cb, load_daily, load_fred, load_fred_many, load_intraday,
-    load_jgb10, load_live_yields, load_news, load_yahoo_yields, now_sgt,
-    parse_tradingview_csv, safe,
+    load_jgb10, load_live_yields, load_news, load_spot_quotes, load_yahoo_yields,
+    now_sgt, parse_tradingview_csv, safe,
 )
 
 st.set_page_config(page_title="FX & Macro Brief", page_icon="💱", layout="wide")
@@ -89,8 +89,13 @@ def render_board():
     daily = safe(load_daily, label="Daily prices")
     if daily is None:
         return
-    intra = safe(load_intraday, label="Intraday prices", quiet=True)
-    board = build_board(daily, intra if intra is not None else pd.DataFrame())
+    # Yahoo's 5-minute bars cover the FX, futures and index rows; the metals get
+    # their live level from a spot quote instead. Both are timestamped in SGT, so
+    # the board can read the last tick out of either without caring which is which.
+    live = [safe(load_intraday, label="Intraday prices", quiet=True),
+            safe(load_spot_quotes, label="Spot metal quotes", quiet=True)]
+    live = [f for f in live if f is not None and not f.empty]
+    board = build_board(daily, pd.concat(live).sort_index() if live else pd.DataFrame())
     if board.empty:
         st.warning("No instrument had enough history to build the board.")
         return
@@ -128,8 +133,12 @@ def render_board():
     if big:
         st.info(f"Unusual moves today (|z| of at least 2): {', '.join(big)}. "
                 "Check the print, then find the headline.")
-    st.caption(f"Refreshed {now_sgt():%H:%M:%S} SGT. Metals and energy are front-month futures, "
-               "which jump when the contract rolls. Yield and VIX moves are shown in basis points.")
+    st.caption(
+        f"Refreshed {now_sgt():%H:%M:%S} SGT. Gold, silver, platinum and palladium are **spot** "
+        "(XAU/USD and friends): the daily history is LBMA's afternoon auction and the live level is "
+        "a spot quote, so the 1D change is measured against yesterday's London fix rather than a "
+        "5pm New York close. Copper and energy are futures, which jump when the contract rolls. "
+        "Yield and VIX moves are shown in basis points.")
 
 
 with tab_board:
@@ -304,7 +313,7 @@ def render_mean_reversion():
             "- **The ADF test here uses the whole history you selected.** A pair can pass over 10 years and fail over 1.\n"
             "- **Scanning many pairs finds false positives.** With hundreds of pairs, some will look stretched by chance.\n"
             "- **A ratio of A ÷ B is not a hedge ratio.** A proper pairs trade sizes each leg by volatility or regression beta.\n"
-            "- **Futures roll gaps, carry and costs are ignored.** Gold, silver and oil series jump at contract rolls.\n"
+            "- **Carry and costs are ignored, and the futures rows roll.** Copper and energy jump at contract rolls; the metals are spot, so they do not.\n"
             "- **Z-scores do not tell you when it reverts.** Structural changes can keep a ratio stretched for years.")
 
 

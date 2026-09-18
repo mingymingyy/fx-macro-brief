@@ -25,7 +25,9 @@ python -m streamlit run app.py
 
 | Source | Used for | Notes |
 | --- | --- | --- |
-| Yahoo Finance (`yfinance`) | Prices, live yields | Unofficial and sometimes delayed; the board shows a per-instrument timestamp. |
+| Yahoo Finance (`yfinance`) | FX, copper, energy, indices, live yields | Unofficial and sometimes delayed; the board shows a per-instrument timestamp. |
+| LBMA | Gold, silver, platinum, palladium — daily history | The published afternoon auction, the benchmark the market settles against. Daily back to 1968. |
+| gold-api.com | Gold, silver, platinum, palladium — live level | Spot quote, so the board's metal levels are XAU/USD rather than a futures price. |
 | FRED | Treasury curve, breakevens, policy rates, all macro series | Official, but published at a New York close, so the Rates tab also shows a live Yahoo print. |
 | Japan MOF | JGB 10-year | Tokyo close. |
 | Nasdaq economic events | Calendar dates, actual / consensus / previous | Unofficial. Per-date, which is what gives the calendar its forward coverage and its released figures. |
@@ -34,6 +36,22 @@ python -m streamlit run app.py
 
 Every loader is wrapped so that a feed going down degrades that one panel rather
 than taking down the page.
+
+## Why the metals are not from Yahoo
+
+Yahoo has no spot metal symbol — `XAUUSD=X` and its siblings all 404 — and its
+`GC=F` is whichever COMEX contract is most active, which for gold is normally two
+or three months out. In September 2026 that was the December contract at 4432
+while XAU/USD spot was 4393: a $38, 0.9% gap, enough to make the board disagree
+with any broker screen.
+
+So the precious metals come from the benchmark instead. LBMA's published auction
+prices give the daily history and a spot quote gives the live level. One
+consequence worth knowing: the **1D** column for those four rows measures spot
+now against the previous afternoon fix in London, not against a 5pm New York
+close, so it can differ slightly from a broker's daily change.
+
+Copper and energy stay on futures, which is how they are quoted anyway.
 
 ## How the calendar works
 
