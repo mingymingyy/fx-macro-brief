@@ -635,6 +635,6 @@ with tab_news:
     run_tab(render_news)
 
 st.divider()
-st.caption("Built with Python and Streamlit. Data from Yahoo Finance, FRED, Japan MOF, "
+st.caption("Built with Python and Streamlit. Data from Yahoo Finance, LBMA, FRED, Japan MOF, "
            "Forex Factory, Nasdaq, Google News and central bank feeds. "
            "For education and research only; not investment advice.")
